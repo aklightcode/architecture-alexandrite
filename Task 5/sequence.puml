@@ -1,0 +1,32 @@
+@startuml
+actor "Operator" as Operator
+participant "MES UI" as MES_UI
+participant "MES API" as MES_API
+participant "REDIS" as REDIS
+participant "MES DB" as MES_DB
+participant "RabbitMQ" as RabbitMQ
+
+Operator -> MES_UI: Запрос списка заказов
+MES_UI -> MES_API: GET /api/orders
+MES_API -> REDIS: Проверка кеша (ключ: orders_list)
+alt Данные в кеше
+    REDIS --> MES_API: Возврат данных из кеша
+else Данных нет в кеше
+    REDIS -> MES_DB: Запрос данных
+    MES_DB --> REDIS: Возврат данных
+    REDIS -> REDIS: Сохранение в кеш (TTL=60s)
+    REDIS --> MES_API: Возврат данных
+end
+MES_API --> MES_UI: Отображение списка заказов
+MES_UI --> Operator: Показ дашборда
+
+Operator -> MES_UI: Изменение статуса заказа
+MES_UI -> MES_API: PUT /api/orders/{id}/status
+MES_API -> MES_DB: Обновление статуса заказа
+MES_DB --> MES_API: Подтверждение изменения
+MES_API -> REDIS: Инвалидация кеша (удаление ключа: orders_list)
+MES_API -> RabbitMQ: Отправка сообщения об изменении статуса
+RabbitMQ --> MES_API: Подтверждение получения
+MES_API --> MES_UI: Подтверждение успешного обновления
+MES_UI --> Operator: Уведомление об успешном изменении
+@enduml
